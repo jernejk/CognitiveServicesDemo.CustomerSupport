@@ -27,7 +27,8 @@ Create following Cognitive Services in Azure Portal:
 * Cognitive Services Speech
 * Cognitive Services Text Analysis
 
-![](img/create-azure-speech-logo.png) ![](img/create-azure-text-analysis-logo.png)
+<img src="img/create-azure-speech-logo.png" width="134" alt="Create Microsoft Cognitive Services Speech" />
+<img src="img/create-azure-text-analysis-logo.png" width="180" alt="Create Microsoft Cognitive Services Text Analysis" />
 
 Copy the values from Speech and Text Analysis into the variables in `Programs.cs`.
 
