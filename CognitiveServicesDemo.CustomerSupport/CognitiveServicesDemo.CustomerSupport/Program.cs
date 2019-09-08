@@ -1,6 +1,7 @@
 ﻿using Microsoft.CognitiveServices.Speech;
 using Newtonsoft.Json;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
@@ -10,11 +11,18 @@ namespace CognitiveServicesDemo.CustomerSupport
 {
     public static class Program
     {
-        private static string _speechApiRegion = "<ENTER-SPEECH-RECOGNITION-REGION>";
-        private static string _speechApiToken = "<ENTER-SPEECH-RECOGNITION-TOKEN>";
-        private static string _textApiName = "<ENTER-TEXT-ANALYSIS-RESOURCE-NAME>";
-        private static string _textApiToken = "<ENTER-TEXT-ANALYSIS-RESOURCE-TOKEN>";
-        private static bool _usePreviewVersion = true;
+        private static readonly string _speechApiRegion = "<ENTER-SPEECH-RECOGNITION-REGION>";
+        private static readonly string _speechApiToken = "<ENTER-SPEECH-RECOGNITION-TOKEN>";
+        private static readonly string _textApiName = "<ENTER-TEXT-ANALYSIS-RESOURCE-NAME>";
+        private static readonly string _textApiToken = "<ENTER-TEXT-ANALYSIS-RESOURCE-TOKEN>";
+        private static readonly bool _usePreviewVersion = true;
+        private static readonly ConsoleColor _defaultColor = Console.ForegroundColor;
+        private static readonly Dictionary<string, ConsoleColor> _sentimentToColor = new Dictionary<string, ConsoleColor>
+        {
+            { "positive", ConsoleColor.Green },
+            { "neutral", ConsoleColor.Yellow },
+            { "negative", ConsoleColor.Red }
+        };
 
         private static async Task Main(string[] args)
         {
@@ -36,10 +44,10 @@ namespace CognitiveServicesDemo.CustomerSupport
                     SpeechRecognitionResult speechToTextResult = await recognizer.RecognizeOnceAsync();
                     if (speechToTextResult.Reason == ResultReason.RecognizedSpeech)
                     {
-                        Console.WriteLine($"{speechToTextResult.Text}");
+                        WriteLineInColor(speechToTextResult.Text, ConsoleColor.Cyan);
 
                         Console.WriteLine();
-                        Console.WriteLine("Text analysis...");
+                        WriteLineInColor("Text analysis...", ConsoleColor.DarkGray);
 
                         // Prepare document for different text analysis APIs.
                         // All of the requests will take in exactly the same request body.
@@ -64,10 +72,13 @@ namespace CognitiveServicesDemo.CustomerSupport
                             if (_usePreviewVersion)
                             {
                                 // We are getting a more accurate representation of how positive, negative and neutral the text is.
-                                Console.WriteLine($"  Sentiment is {sentimentResult.sentiment} with scores:");
-                                Console.WriteLine($"   - Positive:  {Math.Round(sentimentResult.documentScores.positive * 100, 2)}");
-                                Console.WriteLine($"   - Neutral:   {Math.Round(sentimentResult.documentScores.neutral * 100, 2)}");
-                                Console.WriteLine($"   - Negative:  {Math.Round(sentimentResult.documentScores.negative * 100, 2)}");
+                                Console.Write("  Sentiment is ");
+                                WriteInColor(sentimentResult.sentiment, _sentimentToColor[sentimentResult.sentiment]);
+                                Console.WriteLine($" with scores:");
+
+                                WriteValuesInColor("   - Positive:  ", $"{Math.Round(sentimentResult.documentScores.positive * 100, 2)}%", _sentimentToColor["positive"]);
+                                WriteValuesInColor("   - Neutral:   ", $"{Math.Round(sentimentResult.documentScores.neutral * 100, 2)}%", _sentimentToColor["neutral"]);
+                                WriteValuesInColor("   - Negative:  ", $"{Math.Round(sentimentResult.documentScores.negative * 100, 2)}%", _sentimentToColor["negative"]);
                             }
                             else
                             {
@@ -82,7 +93,7 @@ namespace CognitiveServicesDemo.CustomerSupport
                         }
                         else
                         {
-                            Console.WriteLine("  No sentiment found");
+                            WriteLineInColor("  No sentiment found", ConsoleColor.DarkYellow);
                         }
 
                         Console.WriteLine();
@@ -98,7 +109,7 @@ namespace CognitiveServicesDemo.CustomerSupport
                         }
                         else
                         {
-                            Console.WriteLine("  No key phrases found");
+                            WriteLineInColor("  No key phrases found", ConsoleColor.DarkYellow);
                         }
 
                         Console.WriteLine();
@@ -112,20 +123,19 @@ namespace CognitiveServicesDemo.CustomerSupport
                                 Console.WriteLine($"   - {entity.name} ({entity.type})");
                                 if (!string.IsNullOrWhiteSpace(entity.wikipediaUrl))
                                 {
-                                    Console.ForegroundColor = ConsoleColor.Blue;
-                                    Console.WriteLine($"       {entity.wikipediaUrl}");
-                                    Console.ForegroundColor = ConsoleColor.Gray;
+                                    WriteLineInColor($"       {entity.wikipediaUrl}", ConsoleColor.Blue);
                                 }
                             }
                         }
                         else
                         {
-                            Console.WriteLine("  No entities found");
+                            WriteLineInColor("  No entities found", ConsoleColor.DarkYellow);
                         }
                     }
 
                     Console.WriteLine();
                     Console.WriteLine("Press q to quit or enter to continue...");
+                    WriteInColor("> ", ConsoleColor.DarkGray);
 
                     var key = Console.ReadKey();
                     if (key.Key == ConsoleKey.Q)
@@ -159,6 +169,29 @@ namespace CognitiveServicesDemo.CustomerSupport
             }
 
             return textApiResponse?.documents?.FirstOrDefault();
+        }
+
+        private static void WriteInColor(string text, ConsoleColor color)
+        {
+            Console.ForegroundColor = color;
+            Console.Write(text);
+            Console.ForegroundColor = _defaultColor;
+        }
+
+        private static void WriteLineInColor(string text, ConsoleColor color)
+        {
+            Console.ForegroundColor = color;
+            Console.WriteLine(text);
+            Console.ForegroundColor = _defaultColor;
+        }
+
+        private static void WriteValuesInColor(string title, string value, ConsoleColor color)
+        {
+            Console.Write(title);
+
+            Console.ForegroundColor = color;
+            Console.WriteLine(value);
+            Console.ForegroundColor = _defaultColor;
         }
     }
 }
