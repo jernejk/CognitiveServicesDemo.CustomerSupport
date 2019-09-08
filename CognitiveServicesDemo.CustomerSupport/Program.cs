@@ -26,6 +26,14 @@ namespace CognitiveServicesDemo.CustomerSupport
 
         private static async Task Main(string[] args)
         {
+            if (!AreCognitiveServicesVariablesValid())
+            {
+                WriteLineInColor("Please configure Cognitive Services values in Program.cs!", ConsoleColor.Red);
+                Console.WriteLine("Press enter to exit...");
+                Console.ReadLine();
+                return;
+            }
+
             SpeechConfig speechConfig = SpeechConfig.FromSubscription(_speechApiToken, _speechApiRegion);
 
             // Initialize Cognitive Services speech recognition service.
@@ -192,6 +200,12 @@ namespace CognitiveServicesDemo.CustomerSupport
             Console.ForegroundColor = color;
             Console.WriteLine(value);
             Console.ForegroundColor = _defaultColor;
+        }
+
+        private static bool AreCognitiveServicesVariablesValid()
+        {
+            return !_speechApiRegion.StartsWith("<") && !_speechApiToken.StartsWith("<")
+                && !_textApiName.StartsWith("<") && !_textApiToken.StartsWith("<");
         }
     }
 }
