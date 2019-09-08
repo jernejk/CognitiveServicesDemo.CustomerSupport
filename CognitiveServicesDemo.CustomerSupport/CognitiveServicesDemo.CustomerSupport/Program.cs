@@ -12,9 +12,9 @@ namespace CognitiveServicesDemo.CustomerSupport
     {
         private static string _speechApiRegion = "<ENTER-SPEECH-RECOGNITION-REGION>";
         private static string _speechApiToken = "<ENTER-SPEECH-RECOGNITION-TOKEN>";
-        private static string textApiName = "<ENTER-TEXT-ANALYSIS-RESOURCE-NAME>";
-        private static string textApiToken = "<ENTER-TEXT-ANALYSIS-RESOURCE-TOKEN>";
-        private static bool usePreviewVersion = true;
+        private static string _textApiName = "<ENTER-TEXT-ANALYSIS-RESOURCE-NAME>";
+        private static string _textApiToken = "<ENTER-TEXT-ANALYSIS-RESOURCE-TOKEN>";
+        private static bool _usePreviewVersion = true;
 
         private static async Task Main(string[] args)
         {
@@ -38,9 +38,12 @@ namespace CognitiveServicesDemo.CustomerSupport
                     {
                         Console.WriteLine($"{speechToTextResult.Text}");
 
+                        Console.WriteLine();
+                        Console.WriteLine("Text analysis...");
+
                         // Prepare document for different text analysis APIs.
                         // All of the requests will take in exactly the same request body.
-                        var textDocument = new TextApiRequest
+                        var documentRequest = new TextApiRequest
                         {
                             documents = new Document[]
                             {
@@ -54,54 +57,64 @@ namespace CognitiveServicesDemo.CustomerSupport
                         };
 
                         // Get sentiment analysis via Cognitive Services Text Analysis APIs.
-                        TextApiRequest sentimentResult = await GetTextAnalysis(textDocument, "sentiment");
-                        if (sentimentResult?.documents?.Any() == true)
+                        AnalysedDocument sentimentResult = await AnalyzeDocument(documentRequest, "sentiment");
+                        if (sentimentResult != null)
                         {
                             // We get back score representing sentiment.
-                            double score;
-                            string sentiment;
-                            if (usePreviewVersion)
+                            if (_usePreviewVersion)
                             {
                                 // We are getting a more accurate representation of how positive, negative and neutral the text is.
-                                score = sentimentResult.documents[0].documentScores.positive;
-                                sentiment = sentimentResult.documents[0].sentiment;
+                                Console.WriteLine($"  Sentiment is {sentimentResult.sentiment} with scores:");
+                                Console.WriteLine($"   - Positive:  {Math.Round(sentimentResult.documentScores.positive * 100, 2)}");
+                                Console.WriteLine($"   - Neutral:   {Math.Round(sentimentResult.documentScores.neutral * 100, 2)}");
+                                Console.WriteLine($"   - Negative:  {Math.Round(sentimentResult.documentScores.negative * 100, 2)}");
                             }
                             else
                             {
-                                // We only get how potentially positive the text is.
-                                score = sentimentResult.documents[0].score;
+                                // We only get how potentially positive the text is in Sentiment analysis v2.
+                                double score = sentimentResult.score;
 
                                 // Try to determine if message is positive, negative or neutral.
-                                sentiment = score >= 0.75 ? "positive" : (score < 0.25 ? "negative" : "neutral");
+                                string sentiment = score >= 0.75 ? "positive" : (score < 0.25 ? "negative" : "neutral");
+                                Console.WriteLine($"  Sentiment is {sentiment} ({Math.Round(score * 100)}%)");
                             }
 
-                            Console.WriteLine($"  The statement is {sentiment} ({Math.Round(score * 100)}%)");
                         }
                         else
                         {
                             Console.WriteLine("  No sentiment found");
                         }
 
-                        TextApiRequest keyPhrasesResult = await GetTextAnalysis(textDocument, "keyPhrases");
-                        if (keyPhrasesResult?.documents?.Any(d => d.keyPhrases?.Any() == true) == true)
+                        Console.WriteLine();
+
+                        AnalysedDocument keyPhrasesResult = await AnalyzeDocument(documentRequest, "keyPhrases");
+                        if (keyPhrasesResult?.keyPhrases?.Any() == true)
                         {
-                            Console.WriteLine($"  Key phrases: {string.Join(", ", keyPhrasesResult.documents[0].keyPhrases)}");
+                            Console.WriteLine($"  Key phrases:");
+                            foreach (var keyPhrase in keyPhrasesResult.keyPhrases)
+                            {
+                                Console.WriteLine($"   - {keyPhrase}");
+                            }
                         }
                         else
                         {
                             Console.WriteLine("  No key phrases found");
                         }
 
-                        TextApiRequest namedEntitiesResult = await GetTextAnalysis(textDocument, "entities");
-                        if (namedEntitiesResult?.documents?.Any(d => d.entities?.Any() == true) == true)
+                        Console.WriteLine();
+
+                        AnalysedDocument namedEntitiesResult = await AnalyzeDocument(documentRequest, "entities");
+                        if (namedEntitiesResult?.entities?.Any() == true)
                         {
                             Console.WriteLine("  Entities:");
-                            foreach (var entity in namedEntitiesResult.documents.SelectMany(d => d.entities))
+                            foreach (var entity in namedEntitiesResult.entities)
                             {
                                 Console.WriteLine($"   - {entity.name} ({entity.type})");
                                 if (!string.IsNullOrWhiteSpace(entity.wikipediaUrl))
                                 {
-                                    Console.WriteLine($"     {entity.wikipediaUrl}");
+                                    Console.ForegroundColor = ConsoleColor.Blue;
+                                    Console.WriteLine($"       {entity.wikipediaUrl}");
+                                    Console.ForegroundColor = ConsoleColor.Gray;
                                 }
                             }
                         }
@@ -126,26 +139,26 @@ namespace CognitiveServicesDemo.CustomerSupport
             }
         }
 
-        private static async Task<TextApiRequest> GetTextAnalysis(TextApiRequest sentimentDocument, string textAnalysisType)
+        private static async Task<AnalysedDocument> AnalyzeDocument(TextApiRequest sentimentDocument, string textAnalysisType)
         {
             // A preview version 3 only exists for sentiment analysis.
-            string version = usePreviewVersion && textAnalysisType == "sentiment" ? "3.0-preview" : "2.1";
+            string version = _usePreviewVersion && textAnalysisType == "sentiment" ? "3.0-preview" : "2.1";
 
-            TextApiRequest textAnalysis;
+            TextApiResponse textApiResponse;
             using (var client = new HttpClient())
             {
-                string apiSubdomain = textApiName;
-                client.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", textApiToken);
+                string apiSubdomain = _textApiName;
+                client.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", _textApiToken);
 
                 string json = JsonConvert.SerializeObject(sentimentDocument);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
                 var response = await client.PostAsync($"https://{apiSubdomain}.cognitiveservices.azure.com/text/analytics/v{version}/{textAnalysisType}", content);
 
                 string responseJson = await response.Content.ReadAsStringAsync();
-                textAnalysis = JsonConvert.DeserializeObject<TextApiRequest>(responseJson);
+                textApiResponse = JsonConvert.DeserializeObject<TextApiResponse>(responseJson);
             }
 
-            return textAnalysis;
+            return textApiResponse?.documents?.FirstOrDefault();
         }
     }
 }

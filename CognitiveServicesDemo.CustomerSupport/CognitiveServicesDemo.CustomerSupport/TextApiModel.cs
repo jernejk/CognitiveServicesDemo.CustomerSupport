@@ -10,6 +10,17 @@
         public string id { get; set; }
         public string language { get; set; }
         public string text { get; set; }
+    }
+
+    public class TextApiResponse
+    {
+        public AnalysedDocument[] documents { get; set; }
+    }
+
+    public class AnalysedDocument
+    {
+        public string id { get; set; }
+        public string language { get; set; }
         public double score { get; set; }
         public string[] keyPhrases { get; set; }
         public Entity[] entities { get; set; }
