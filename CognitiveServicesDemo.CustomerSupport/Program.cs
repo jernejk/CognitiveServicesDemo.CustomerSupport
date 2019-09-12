@@ -1,7 +1,9 @@
 ﻿using Microsoft.CognitiveServices.Speech;
+using Microsoft.CognitiveServices.Speech.Audio;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
@@ -11,149 +13,189 @@ namespace CognitiveServicesDemo.CustomerSupport
 {
     public static class Program
     {
-        private static readonly string _speechApiRegion = "<ENTER-SPEECH-RECOGNITION-REGION>";
-        private static readonly string _speechApiToken = "<ENTER-SPEECH-RECOGNITION-TOKEN>";
-        private static readonly string _textApiName = "<ENTER-TEXT-ANALYSIS-RESOURCE-NAME>";
-        private static readonly string _textApiToken = "<ENTER-TEXT-ANALYSIS-RESOURCE-TOKEN>";
         private static readonly bool _usePreviewVersion = true;
         private static readonly ConsoleColor _defaultColor = Console.ForegroundColor;
         private static readonly Dictionary<string, ConsoleColor> _sentimentToColor = new Dictionary<string, ConsoleColor>
         {
             { "positive", ConsoleColor.Green },
             { "neutral", ConsoleColor.Yellow },
-            { "negative", ConsoleColor.Red }
+            { "negative", ConsoleColor.Red },
+            { "mixed", ConsoleColor.Gray },
         };
 
         private static async Task Main(string[] args)
         {
             if (!AreCognitiveServicesVariablesValid())
             {
-                WriteLineInColor("Please configure Cognitive Services values in Program.cs!", ConsoleColor.Red);
+                WriteLineInColor("Please configure Cognitive Services values in Constants.cs!", ConsoleColor.Red);
                 Console.WriteLine("Press enter to exit...");
                 Console.ReadLine();
                 return;
             }
 
-            SpeechConfig speechConfig = SpeechConfig.FromSubscription(_speechApiToken, _speechApiRegion);
+            bool useMicrophone = args.Length == 0;
+            if (!useMicrophone && !File.Exists(args[0]))
+            {
+                WriteLineInColor($"File {args[0]} was not found!", ConsoleColor.Red);
+                Console.WriteLine("Press enter to exit...");
+                Console.ReadLine();
+                return;
+            }
+
+            // Configure speech API and audio input (microphone or file).
+            SpeechConfig speechConfig = SpeechConfig.FromSubscription(Constants.SpeechApiToken, Constants.SpeechApiRegion);
+            AudioConfig audioInput = useMicrophone ?
+                AudioConfig.FromDefaultMicrophoneInput() :
+                AudioConfig.FromWavFileInput(args[0]);
+
+            var stopProcessingFile = new TaskCompletionSource<int>();
 
             // Initialize Cognitive Services speech recognition service.
             // On demand, it will use the hardware microphone, send it to MS Cognitive Services
             // and give us the appropriate response.
-            using (var recognizer = new SpeechRecognizer(speechConfig))
+            using (audioInput)
+            using (var recognizer = new SpeechRecognizer(speechConfig, audioInput))
             {
-                // Keep listening until user presses "q".
-                while (true)
+                // Attempt to recognize speech once.
+                // It will start capturing when it hears something and stop on first pause.
+                recognizer.Recognized += async (_, e) =>
                 {
-                    Console.WriteLine("Say something...");
-                    Console.WriteLine();
-
-                    // Attempt to recognize speech once.
-                    // It will start capturing when it hears something and stop on first pause.
-                    SpeechRecognitionResult speechToTextResult = await recognizer.RecognizeOnceAsync();
-                    if (speechToTextResult.Reason == ResultReason.RecognizedSpeech)
+                    if (e.Result.Reason == ResultReason.RecognizedSpeech &&!string.IsNullOrWhiteSpace(e.Result.Text))
                     {
-                        WriteLineInColor(speechToTextResult.Text, ConsoleColor.Cyan);
+                        await AnalyzeText(e.Result);
 
                         Console.WriteLine();
-                        WriteLineInColor("Text analysis...", ConsoleColor.DarkGray);
-
-                        // Prepare document for different text analysis APIs.
-                        // All of the requests will take in exactly the same request body.
-                        var documentRequest = new TextApiRequest
-                        {
-                            documents = new Document[]
-                            {
-                                new Document
-                                {
-                                    language = "en",
-                                    id = "1",
-                                    text = speechToTextResult.Text
-                                }
-                            }
-                        };
-
-                        // Get sentiment analysis via Cognitive Services Text Analysis APIs.
-                        AnalysedDocument sentimentResult = await AnalyzeDocument(documentRequest, "sentiment");
-                        if (sentimentResult != null)
-                        {
-                            // We get back score representing sentiment.
-                            if (_usePreviewVersion)
-                            {
-                                // We are getting a more accurate representation of how positive, negative and neutral the text is.
-                                Console.Write("  Sentiment is ");
-                                WriteInColor(sentimentResult.sentiment, _sentimentToColor[sentimentResult.sentiment]);
-                                Console.WriteLine($" with scores:");
-
-                                WriteValuesInColor("   - Positive:  ", $"{Math.Round(sentimentResult.documentScores.positive * 100, 2)}%", _sentimentToColor["positive"]);
-                                WriteValuesInColor("   - Neutral:   ", $"{Math.Round(sentimentResult.documentScores.neutral * 100, 2)}%", _sentimentToColor["neutral"]);
-                                WriteValuesInColor("   - Negative:  ", $"{Math.Round(sentimentResult.documentScores.negative * 100, 2)}%", _sentimentToColor["negative"]);
-                            }
-                            else
-                            {
-                                // We only get how potentially positive the text is in Sentiment analysis v2.
-                                double score = sentimentResult.score;
-
-                                // Try to determine if message is positive, negative or neutral.
-                                string sentiment = score >= 0.75 ? "positive" : (score < 0.25 ? "negative" : "neutral");
-                                Console.WriteLine($"  Sentiment is {sentiment} ({Math.Round(score * 100)}%)");
-                            }
-
-                        }
-                        else
-                        {
-                            WriteLineInColor("  No sentiment found", ConsoleColor.DarkYellow);
-                        }
-
-                        Console.WriteLine();
-
-                        AnalysedDocument keyPhrasesResult = await AnalyzeDocument(documentRequest, "keyPhrases");
-                        if (keyPhrasesResult?.keyPhrases?.Any() == true)
-                        {
-                            Console.WriteLine($"  Key phrases:");
-                            foreach (var keyPhrase in keyPhrasesResult.keyPhrases)
-                            {
-                                Console.WriteLine($"   - {keyPhrase}");
-                            }
-                        }
-                        else
-                        {
-                            WriteLineInColor("  No key phrases found", ConsoleColor.DarkYellow);
-                        }
-
-                        Console.WriteLine();
-
-                        AnalysedDocument namedEntitiesResult = await AnalyzeDocument(documentRequest, "entities");
-                        if (namedEntitiesResult?.entities?.Any() == true)
-                        {
-                            Console.WriteLine("  Entities:");
-                            foreach (var entity in namedEntitiesResult.entities)
-                            {
-                                Console.WriteLine($"   - {entity.name} ({entity.type})");
-                                if (!string.IsNullOrWhiteSpace(entity.wikipediaUrl))
-                                {
-                                    WriteLineInColor($"       {entity.wikipediaUrl}", ConsoleColor.Blue);
-                                }
-                            }
-                        }
-                        else
-                        {
-                            WriteLineInColor("  No entities found", ConsoleColor.DarkYellow);
-                        }
+                        Console.WriteLine("Say something or press q to quit...");
+                        WriteInColor("> ", ConsoleColor.DarkGray);
                     }
+                };
 
+                recognizer.Canceled += (s, e) =>
+                {
+                    stopProcessingFile.TrySetResult(0);
+                };
+
+                await recognizer.StartContinuousRecognitionAsync();
+
+                // Have human interaction only for microphone scenario.
+                if (useMicrophone)
+                {
+                    // Keep listening until user presses "q" unless we are processing a file.
                     Console.WriteLine();
-                    Console.WriteLine("Press q to quit or enter to continue...");
+                    Console.WriteLine("Say something or press q to quit...");
                     WriteInColor("> ", ConsoleColor.DarkGray);
 
                     var key = Console.ReadKey();
                     if (key.Key == ConsoleKey.Q)
                     {
-                        break;
+                        await recognizer.StopContinuousRecognitionAsync();
                     }
-
-                    Console.WriteLine();
-                    Console.WriteLine();
                 }
+                else
+                {
+                    Console.WriteLine($"Processing audio file \"{args[0]}\"...");
+                    Console.WriteLine();
+
+                    // Waits for completion.
+                    // Use Task.WaitAny to keep the task rooted.
+                    Task.WaitAny(new[] { stopProcessingFile.Task });
+                }
+
+                Console.WriteLine();
+                Console.WriteLine();
+
+                await recognizer.StopContinuousRecognitionAsync();
+            }
+        }
+
+        private static async Task AnalyzeText(SpeechRecognitionResult speechToTextResult)
+        {
+            WriteLineInColor(speechToTextResult.Text, ConsoleColor.Cyan);
+
+            Console.WriteLine();
+            WriteLineInColor("Text analysis...", ConsoleColor.DarkGray);
+
+            // Prepare document for different text analysis APIs.
+            // All of the requests will take in exactly the same request body.
+            var documentRequest = new TextApiRequest
+            {
+                documents = new Document[]
+                {
+                        new Document
+                        {
+                            language = "en",
+                            id = "1",
+                            text = speechToTextResult.Text
+                        }
+                }
+            };
+
+            // Get sentiment analysis via Cognitive Services Text Analysis APIs.
+            AnalysedDocument sentimentResult = await AnalyzeDocument(documentRequest, "sentiment");
+            if (sentimentResult != null)
+            {
+                // We get back score representing sentiment.
+                if (_usePreviewVersion)
+                {
+                    // We are getting a more accurate representation of how positive, negative and neutral the text is.
+                    Console.Write("  Sentiment is ");
+                    WriteInColor(sentimentResult.sentiment, _sentimentToColor[sentimentResult.sentiment]);
+                    Console.WriteLine($" with scores:");
+
+                    WriteValuesInColor("   - Positive:  ", $"{Math.Round(sentimentResult.documentScores.positive * 100, 2)}%", _sentimentToColor["positive"]);
+                    WriteValuesInColor("   - Neutral:   ", $"{Math.Round(sentimentResult.documentScores.neutral * 100, 2)}%", _sentimentToColor["neutral"]);
+                    WriteValuesInColor("   - Negative:  ", $"{Math.Round(sentimentResult.documentScores.negative * 100, 2)}%", _sentimentToColor["negative"]);
+                }
+                else
+                {
+                    // We only get how potentially positive the text is in Sentiment analysis v2.
+                    double score = sentimentResult.score;
+
+                    // Try to determine if message is positive, negative or neutral.
+                    string sentiment = score >= 0.75 ? "positive" : (score < 0.25 ? "negative" : "neutral");
+                    Console.WriteLine($"  Sentiment is {sentiment} ({Math.Round(score * 100)}%)");
+                }
+
+            }
+            else
+            {
+                WriteLineInColor("  No sentiment found", ConsoleColor.DarkYellow);
+            }
+
+            Console.WriteLine();
+
+            AnalysedDocument keyPhrasesResult = await AnalyzeDocument(documentRequest, "keyPhrases");
+            if (keyPhrasesResult?.keyPhrases?.Any() == true)
+            {
+                Console.WriteLine($"  Key phrases:");
+                foreach (var keyPhrase in keyPhrasesResult.keyPhrases)
+                {
+                    Console.WriteLine($"   - {keyPhrase}");
+                }
+            }
+            else
+            {
+                WriteLineInColor("  No key phrases found", ConsoleColor.DarkYellow);
+            }
+
+            Console.WriteLine();
+
+            AnalysedDocument namedEntitiesResult = await AnalyzeDocument(documentRequest, "entities");
+            if (namedEntitiesResult?.entities?.Any() == true)
+            {
+                Console.WriteLine("  Entities:");
+                foreach (var entity in namedEntitiesResult.entities)
+                {
+                    Console.WriteLine($"   - {entity.name} ({entity.type})");
+                    if (!string.IsNullOrWhiteSpace(entity.wikipediaUrl))
+                    {
+                        WriteLineInColor($"       {entity.wikipediaUrl}", ConsoleColor.Blue);
+                    }
+                }
+            }
+            else
+            {
+                WriteLineInColor("  No entities found", ConsoleColor.DarkYellow);
             }
         }
 
@@ -165,8 +207,8 @@ namespace CognitiveServicesDemo.CustomerSupport
             TextApiResponse textApiResponse;
             using (var client = new HttpClient())
             {
-                string apiSubdomain = _textApiName;
-                client.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", _textApiToken);
+                string apiSubdomain = Constants.TextApiName;
+                client.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", Constants.TextApiToken);
 
                 string json = JsonConvert.SerializeObject(sentimentDocument);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -204,8 +246,8 @@ namespace CognitiveServicesDemo.CustomerSupport
 
         private static bool AreCognitiveServicesVariablesValid()
         {
-            return !_speechApiRegion.StartsWith("<") && !_speechApiToken.StartsWith("<")
-                && !_textApiName.StartsWith("<") && !_textApiToken.StartsWith("<");
+            return !Constants.SpeechApiRegion.StartsWith("<") && !Constants.SpeechApiToken.StartsWith("<")
+                && !Constants.TextApiName.StartsWith("<") && !Constants.TextApiToken.StartsWith("<");
         }
     }
 }
