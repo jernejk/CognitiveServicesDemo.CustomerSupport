@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "CognitiveServicesDemo.CustomerSupport": {
+      "commandName": "Project",
+      "commandLineArgs": ""
+    }
+  }
+}
