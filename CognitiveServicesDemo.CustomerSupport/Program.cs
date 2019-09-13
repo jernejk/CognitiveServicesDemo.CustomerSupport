@@ -70,6 +70,7 @@ namespace CognitiveServicesDemo.CustomerSupport
                 AudioConfig.FromDefaultMicrophoneInput() :
                 AudioConfig.FromWavFileInput(args[0]);
 
+            bool isCanceled = false;
             var stopProcessingFile = new TaskCompletionSource<int>();
 
             // Initialize Cognitive Services speech recognition service.
@@ -95,11 +96,17 @@ namespace CognitiveServicesDemo.CustomerSupport
 
                         WriteInColor("> ", ConsoleColor.DarkGray);
                     }
+
+                    if (isCanceled)
+                    {
+                        // Stop if we have reached the end of the audio file.
+                        stopProcessingFile.TrySetResult(0);
+                    }
                 };
 
                 recognizer.Canceled += (s, e) =>
                 {
-                    stopProcessingFile.TrySetResult(0);
+                    isCanceled = true;
                 };
 
                 await recognizer.StartContinuousRecognitionAsync();
@@ -133,6 +140,10 @@ namespace CognitiveServicesDemo.CustomerSupport
 
                 await recognizer.StopContinuousRecognitionAsync();
             }
+
+            Console.WriteLine("Test");
+            // Sometimes the color isn't reseted before the command line is exited.
+            Console.ForegroundColor = _defaultColor;
         }
 
         private static async Task AnalyzeText(SpeechRecognitionResult speechToTextResult)
