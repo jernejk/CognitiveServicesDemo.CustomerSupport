@@ -33,13 +33,35 @@ namespace CognitiveServicesDemo.CustomerSupport
                 return;
             }
 
-            bool useMicrophone = args.Length == 0;
-            if (!useMicrophone && !File.Exists(args[0]))
+            string audioFile = args.FirstOrDefault();
+            bool useMicrophone = string.IsNullOrWhiteSpace(audioFile);
+            if (!useMicrophone)
             {
-                WriteLineInColor($"File {args[0]} was not found!", ConsoleColor.Red);
-                Console.WriteLine("Press enter to exit...");
-                Console.ReadLine();
-                return;
+                bool isFileValid = true;
+                Console.WriteLine($"Input file: {audioFile}");
+                if (!File.Exists(audioFile))
+                {
+                    WriteLineInColor($"File was not found!", ConsoleColor.Red);
+                    Console.WriteLine("Press enter to exit...");
+                    Console.ReadLine();
+
+                    isFileValid = false;
+                }
+                else if (!audioFile.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
+                {
+                    WriteLineInColor($"Only .wav files are supported!", ConsoleColor.Red);
+
+                    Console.WriteLine("Press enter to exit...");
+                    Console.ReadLine();
+
+                    isFileValid = false;
+                }
+
+                if (!isFileValid)
+                {
+                    // End program.
+                    return;
+                }
             }
 
             // Configure speech API and audio input (microphone or file).
@@ -65,7 +87,12 @@ namespace CognitiveServicesDemo.CustomerSupport
                         await AnalyzeText(e.Result);
 
                         Console.WriteLine();
-                        Console.WriteLine("Say something or press q to quit...");
+
+                        if (useMicrophone)
+                        {
+                            Console.WriteLine("Say something or press q to quit...");
+                        }
+
                         WriteInColor("> ", ConsoleColor.DarkGray);
                     }
                 };
