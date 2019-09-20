@@ -1,5 +1,8 @@
-﻿using Microsoft.CognitiveServices.Speech;
+﻿using CognitiveServicesDemo.CustomerSupport.Persistance;
+using CognitiveServicesDemo.CustomerSupport.Persistance.Domain;
+using Microsoft.CognitiveServices.Speech;
 using Microsoft.CognitiveServices.Speech.Audio;
+using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -73,19 +76,40 @@ namespace CognitiveServicesDemo.CustomerSupport
             bool isCanceled = false;
             var stopProcessingFile = new TaskCompletionSource<int>();
 
+            var builder = new DbContextOptionsBuilder<AudioMetadataContext>()
+                .UseSqlite("DataSource=audio.db", x => { });
+
             // Initialize Cognitive Services speech recognition service.
             // On demand, it will use the hardware microphone, send it to MS Cognitive Services
             // and give us the appropriate response.
+            using (var dbContext = new AudioMetadataContext(builder.Options))
             using (audioInput)
             using (var recognizer = new SpeechRecognizer(speechConfig, audioInput))
             {
+                await dbContext.Database.OpenConnectionAsync();
+                await dbContext.Database.EnsureCreatedAsync();
+
+                var audioDocument = new AudioDocument
+                {
+                    Name = useMicrophone ? $"Mic{Guid.NewGuid()}" : audioFile,
+                    CreatedOn = DateTime.UtcNow
+                };
+
+                dbContext.AudioDocuments.Add(audioDocument);
+                await dbContext.SaveChangesAsync();
+
                 // Attempt to recognize speech once.
                 // It will start capturing when it hears something and stop on first pause.
                 recognizer.Recognized += async (_, e) =>
                 {
                     if (e.Result.Reason == ResultReason.RecognizedSpeech &&!string.IsNullOrWhiteSpace(e.Result.Text))
                     {
-                        await AnalyzeText(e.Result);
+                        await AnalyzeText(e.Result, dbContext, audioDocument.Id);
+
+                        lock (audioDocument)
+                        {
+                            dbContext.SaveChanges();
+                        }
 
                         Console.WriteLine();
 
@@ -101,6 +125,8 @@ namespace CognitiveServicesDemo.CustomerSupport
                     {
                         // Stop if we have reached the end of the audio file.
                         stopProcessingFile.TrySetResult(0);
+
+                        audioDocument.Duration = DateTime.UtcNow.Subtract(audioDocument.CreatedOn);
                     }
                 };
 
@@ -139,15 +165,25 @@ namespace CognitiveServicesDemo.CustomerSupport
                 Console.WriteLine();
 
                 await recognizer.StopContinuousRecognitionAsync();
+                await dbContext.SaveChangesAsync();
             }
 
-            Console.WriteLine("Test");
             // Sometimes the color isn't reseted before the command line is exited.
             Console.ForegroundColor = _defaultColor;
         }
 
-        private static async Task AnalyzeText(SpeechRecognitionResult speechToTextResult)
+        private static async Task AnalyzeText(SpeechRecognitionResult speechToTextResult, AudioMetadataContext dbContext, int audioId)
         {
+            var metadata = new AudioSnippetMetedata
+            {
+                AudioId = audioId,
+                Text = speechToTextResult.Text,
+                ResultId = speechToTextResult.ResultId,
+                Offset = speechToTextResult.OffsetInTicks / 10_000_000d
+            };
+
+            dbContext.AudioSnippetMetedatas.Add(metadata);
+
             WriteLineInColor(speechToTextResult.Text, ConsoleColor.Cyan);
 
             Console.WriteLine();
@@ -159,12 +195,12 @@ namespace CognitiveServicesDemo.CustomerSupport
             {
                 documents = new Document[]
                 {
-                        new Document
-                        {
-                            language = "en",
-                            id = "1",
-                            text = speechToTextResult.Text
-                        }
+                    new Document
+                    {
+                        language = "en",
+                        id = "1",
+                        text = speechToTextResult.Text
+                    }
                 }
             };
 
@@ -172,9 +208,16 @@ namespace CognitiveServicesDemo.CustomerSupport
             AnalysedDocument sentimentResult = await AnalyzeDocument(documentRequest, "sentiment");
             if (sentimentResult != null)
             {
+                metadata.SentimentJson = JsonConvert.SerializeObject(sentimentResult);
+
                 // We get back score representing sentiment.
                 if (_usePreviewVersion)
                 {
+                    metadata.Sentiment = sentimentResult.sentiment;
+                    metadata.PositiveSentiment = (float)sentimentResult.documentScores.positive;
+                    metadata.NeutralSentiment = (float)sentimentResult.documentScores.neutral;
+                    metadata.NegativeSentiment = (float)sentimentResult.documentScores.negative;
+
                     // We are getting a more accurate representation of how positive, negative and neutral the text is.
                     Console.Write("  Sentiment is ");
                     WriteInColor(sentimentResult.sentiment, _sentimentToColor[sentimentResult.sentiment]);
@@ -205,6 +248,8 @@ namespace CognitiveServicesDemo.CustomerSupport
             AnalysedDocument keyPhrasesResult = await AnalyzeDocument(documentRequest, "keyPhrases");
             if (keyPhrasesResult?.keyPhrases?.Any() == true)
             {
+                metadata.KeyPhrasesJson = JsonConvert.SerializeObject(keyPhrasesResult);
+
                 Console.WriteLine($"  Key phrases:");
                 foreach (var keyPhrase in keyPhrasesResult.keyPhrases)
                 {
@@ -221,6 +266,8 @@ namespace CognitiveServicesDemo.CustomerSupport
             AnalysedDocument namedEntitiesResult = await AnalyzeDocument(documentRequest, "entities");
             if (namedEntitiesResult?.entities?.Any() == true)
             {
+                metadata.NamedEntitiesJson = JsonConvert.SerializeObject(namedEntitiesResult);
+
                 Console.WriteLine("  Entities:");
                 foreach (var entity in namedEntitiesResult.entities)
                 {
