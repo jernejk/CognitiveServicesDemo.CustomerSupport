@@ -37,7 +37,6 @@ namespace CognitiveServicesDemo.CustomerSupport
             }
 
             string audioFile = args.FirstOrDefault();
-            audioFile = @"C:\Users\JK\Downloads\831d4c70-d074-40a1-8c18-f55676c6f6ef.wav";
             bool useMicrophone = string.IsNullOrWhiteSpace(audioFile);
             if (!useMicrophone)
             {
