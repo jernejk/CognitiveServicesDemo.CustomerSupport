@@ -37,6 +37,7 @@ namespace CognitiveServicesDemo.CustomerSupport
             }
 
             string audioFile = args.FirstOrDefault();
+            audioFile = @"C:\Users\JK\Downloads\831d4c70-d074-40a1-8c18-f55676c6f6ef.wav";
             bool useMicrophone = string.IsNullOrWhiteSpace(audioFile);
             if (!useMicrophone)
             {
@@ -71,7 +72,7 @@ namespace CognitiveServicesDemo.CustomerSupport
             SpeechConfig speechConfig = SpeechConfig.FromSubscription(Constants.SpeechApiToken, Constants.SpeechApiRegion);
             AudioConfig audioInput = useMicrophone ?
                 AudioConfig.FromDefaultMicrophoneInput() :
-                AudioConfig.FromWavFileInput(args[0]);
+                AudioConfig.FromWavFileInput(audioFile);
 
             bool isCanceled = false;
             var stopProcessingFile = new TaskCompletionSource<int>();
@@ -153,7 +154,7 @@ namespace CognitiveServicesDemo.CustomerSupport
                 }
                 else
                 {
-                    Console.WriteLine($"Processing audio file \"{args[0]}\"...");
+                    Console.WriteLine($"Processing audio file \"{audioFile}\"...");
                     Console.WriteLine();
 
                     // Waits for completion.
