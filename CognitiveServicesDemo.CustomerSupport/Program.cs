@@ -244,11 +244,18 @@ namespace CognitiveServicesDemo.CustomerSupport
             TextApiResponse textApiResponse;
             using (var client = new HttpClient())
             {
+                var textApiUrl = Constants.TextApiBaseUrl;
+                if (!textApiUrl.StartsWith("http"))
+                {
+                    // Make sure we support custom URL as well as from earlier versions.
+                    textApiUrl = $"https://{textApiUrl}.cognitiveservices.azure.com";
+                }
+
                 client.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", Constants.TextApiToken);
 
                 string json = JsonConvert.SerializeObject(sentimentDocument);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await client.PostAsync($"{Constants.TextApiBaseUrl.TrimEnd('/')}/text/analytics/v{version}/{textAnalysisType}", content);
+                var response = await client.PostAsync($"{textApiUrl.TrimEnd('/')}/text/analytics/v{version}/{textAnalysisType}", content);
 
                 string responseJson = await response.Content.ReadAsStringAsync();
                 textApiResponse = JsonConvert.DeserializeObject<TextApiResponse>(responseJson);
