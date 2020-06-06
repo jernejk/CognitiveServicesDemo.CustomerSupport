@@ -27,7 +27,7 @@
 
         // For v3 preview of text API
         public string sentiment { get; set; }
-        public DocumentScore documentScores { get; set; }
+        public DocumentScore confidenceScores { get; set; }
     }
 
     public class Entity

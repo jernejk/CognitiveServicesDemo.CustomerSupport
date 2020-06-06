@@ -13,7 +13,7 @@ namespace CognitiveServicesDemo.CustomerSupport
 {
     public static class Program
     {
-        private static readonly bool _usePreviewVersion = true;
+        private static readonly bool _useLatestVersion = true;
         private static readonly ConsoleColor _defaultColor = Console.ForegroundColor;
         private static readonly Dictionary<string, ConsoleColor> _sentimentToColor = new Dictionary<string, ConsoleColor>
         {
@@ -141,7 +141,6 @@ namespace CognitiveServicesDemo.CustomerSupport
                 await recognizer.StopContinuousRecognitionAsync();
             }
 
-            Console.WriteLine("Test");
             // Sometimes the color isn't reseted before the command line is exited.
             Console.ForegroundColor = _defaultColor;
         }
@@ -173,16 +172,16 @@ namespace CognitiveServicesDemo.CustomerSupport
             if (sentimentResult != null)
             {
                 // We get back score representing sentiment.
-                if (_usePreviewVersion)
+                if (_useLatestVersion)
                 {
                     // We are getting a more accurate representation of how positive, negative and neutral the text is.
                     Console.Write("  Sentiment is ");
                     WriteInColor(sentimentResult.sentiment, _sentimentToColor[sentimentResult.sentiment]);
                     Console.WriteLine($" with scores:");
 
-                    WriteValuesInColor("   - Positive:  ", $"{Math.Round(sentimentResult.documentScores.positive * 100, 2)}%", _sentimentToColor["positive"]);
-                    WriteValuesInColor("   - Neutral:   ", $"{Math.Round(sentimentResult.documentScores.neutral * 100, 2)}%", _sentimentToColor["neutral"]);
-                    WriteValuesInColor("   - Negative:  ", $"{Math.Round(sentimentResult.documentScores.negative * 100, 2)}%", _sentimentToColor["negative"]);
+                    WriteValuesInColor("   - Positive:  ", $"{Math.Round(sentimentResult.confidenceScores.positive * 100, 2)}%", _sentimentToColor["positive"]);
+                    WriteValuesInColor("   - Neutral:   ", $"{Math.Round(sentimentResult.confidenceScores.neutral * 100, 2)}%", _sentimentToColor["neutral"]);
+                    WriteValuesInColor("   - Negative:  ", $"{Math.Round(sentimentResult.confidenceScores.negative * 100, 2)}%", _sentimentToColor["negative"]);
                 }
                 else
                 {
@@ -239,18 +238,17 @@ namespace CognitiveServicesDemo.CustomerSupport
 
         private static async Task<AnalysedDocument> AnalyzeDocument(TextApiRequest sentimentDocument, string textAnalysisType)
         {
-            // A preview version 3 only exists for sentiment analysis.
-            string version = _usePreviewVersion && textAnalysisType == "sentiment" ? "3.0-preview" : "2.1";
+            // This example app does not yet have support for entities in v3.
+            string version = _useLatestVersion && textAnalysisType != "entities" ? "3.0" : "2.1";
 
             TextApiResponse textApiResponse;
             using (var client = new HttpClient())
             {
-                string apiSubdomain = Constants.TextApiName;
                 client.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", Constants.TextApiToken);
 
                 string json = JsonConvert.SerializeObject(sentimentDocument);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await client.PostAsync($"https://{apiSubdomain}.cognitiveservices.azure.com/text/analytics/v{version}/{textAnalysisType}", content);
+                var response = await client.PostAsync($"{Constants.TextApiBaseUrl.TrimEnd('/')}/text/analytics/v{version}/{textAnalysisType}", content);
 
                 string responseJson = await response.Content.ReadAsStringAsync();
                 textApiResponse = JsonConvert.DeserializeObject<TextApiResponse>(responseJson);
@@ -285,7 +283,7 @@ namespace CognitiveServicesDemo.CustomerSupport
         private static bool AreCognitiveServicesVariablesValid()
         {
             return !Constants.SpeechApiRegion.StartsWith("<") && !Constants.SpeechApiToken.StartsWith("<")
-                && !Constants.TextApiName.StartsWith("<") && !Constants.TextApiToken.StartsWith("<");
+                && !Constants.TextApiBaseUrl.StartsWith("<") && !Constants.TextApiToken.StartsWith("<");
         }
     }
 }
