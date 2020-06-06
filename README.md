@@ -20,12 +20,16 @@ We use Microsoft Cognitive Services to convert speech to text and do some text a
 You can either use your microphone or put a `.wav` as parameter to the app for speech to text + analysis.
 When using a microphone, the app will listen for your input and will start analyzing as soon as it detect a bit longer pause.
 
+The text is then processed by Text Analysis v3.0 (also supports v2.1).
+
 ![Demonstration of the app when using a microphone](img/cognitive-services-demo-customer-support.png)
 **Figure: Demonstration of the app.**
 
 ## Prerequisites
 
-Create following Cognitive Services in Azure Portal:
+You'll need .NET Core 3.1 SDK to run the code. For testing you need either a microphone or a `.wav` audio file.
+
+**Create following Cognitive Services in Azure Portal:**
 
 * Cognitive Services Speech
 * Cognitive Services Text Analysis
@@ -75,4 +79,3 @@ Example of `launchSettings.json`:
   }
 }
 ```
- 
