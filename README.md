@@ -1,7 +1,5 @@
 # Microsoft Cognitive Services Demo for Customer Support
 
-[![Build status](https://ci.appveyor.com/api/projects/status/gxxw8d5t45lsp1o6/branch/master?svg=true)](https://ci.appveyor.com/project/jernejk/cognitiveservicesdemo-customersupport/branch/master)
-
 This is created to show a proof of concept for customer support using Microsoft Cognitive Service.
 
 ## Scenario
